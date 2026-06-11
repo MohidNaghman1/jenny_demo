@@ -15,7 +15,7 @@ BASE       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PDF_PATH   = os.path.join(BASE, "data", "contracts.pdf")
 INDEX_PATH = os.path.join(BASE, "data", "faiss_index")
 
-EMBED_MODEL = "BAAI/bge-small-en-v1.5"
+EMBED_MODEL = "all-MiniLM-L6-v2"
 
 def ingest():
     print("📄 Loading PDF...")
