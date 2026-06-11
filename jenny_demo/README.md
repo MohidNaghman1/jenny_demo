@@ -1,14 +1,12 @@
 # Business Knowledge Assistant — Hybrid RAG Demo
 
-A production-ready LangGraph agent that answers natural-language business questions
-by routing across a **PDF contracts store** and a **SQLite payments database**, then
-synthesising grounded answers with inline source citations.
+A LangGraph agent that answers natural-language business questions by routing across a **PDF contracts store** and a **SQLite payments database**, then synthesising grounded answers with inline source citations.
 
 Built with Groq (free tier) + HuggingFace local embeddings — **zero API cost beyond Groq**.
 
 ---
 
-## Live Demo Architecture
+## Architecture
 
 ```
 User Question
@@ -70,8 +68,7 @@ cp .env.example .env
 pip install -r requirements.txt
 ```
 
-> **Note:** HuggingFace embeddings (`BAAI/bge-small-en-v1.5`) download ~40 MB on
-> first use. No API key needed — runs locally on CPU.
+> **Note:** HuggingFace embeddings (`BAAI/bge-small-en-v1.5`) download ~40 MB on first use. No API key needed — runs locally on CPU.
 
 ### 4. Build the FAISS index
 
@@ -79,8 +76,7 @@ pip install -r requirements.txt
 python3 ingestion/ingest.py
 ```
 
-This reads `data/contracts.pdf`, chunks it, embeds it, and saves the FAISS
-vector index to `data/faiss_index/`. **Re-run this any time you change the PDF.**
+This reads `data/contracts.pdf`, chunks it, embeds it, and saves the FAISS vector index to `data/faiss_index/`. **Re-run this any time you change the PDF.**
 
 ### 5. Start the API
 
@@ -104,51 +100,27 @@ The UI calls `http://localhost:8000` by default.
 
 ---
 
-## Deploy to Railway (Free Tier)
-
-Railway gives **$5 free credit/month** — enough for a persistent demo.
-
-### Steps
-
-1. Push this repo to GitHub (keep `.env` out — it's in `.gitignore`)
-
-2. Go to [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub**
-
-3. Select your repo
-
-4. Add environment variable in Railway dashboard:
-   ```
-   GROQ_API_KEY = gsk_...
-   ```
-
-5. Railway auto-detects `Procfile` and runs `bash start.sh`, which:
-   - Builds the FAISS index on first deploy
-   - Starts the FastAPI server on `$PORT`
-
-6. Copy your Railway URL (e.g. `https://jenny-demo.up.railway.app`)
-
-7. Host `ui/index.html` on **GitHub Pages**:
-   - Repo Settings → Pages → Branch: `main`, Folder: `/ui`
-   - Edit line 1 of the `<script>` in `index.html`:
-     ```js
-     window.API_BASE = "https://jenny-demo.up.railway.app";
-     ```
-
-8. Share the GitHub Pages URL with Jenny ✓
-
----
-
 ## Demo Queries
 
-Use these four queries to demonstrate all routing paths:
+Use these to test all routing paths:
 
 | Query | Route | What it shows |
 |---|---|---|
 | `Which customers have overdue payments?` | `sql` | SQL-only: names, amounts, due dates |
 | `What does the contract say about service suspension?` | `vector` | PDF-only: clause extraction with page citations |
-| `Which customers have overdue payments and what does their contract say about suspension?` | `hybrid` | **Money shot** — single answer combining both sources |
+| `Which customers have overdue payments and what does their contract say about suspension?` | `hybrid` | **Hybrid** — single answer combining both sources |
 | `What is the refund policy?` | `vector` | Policy lookup from PDF |
-| `What are the late payment penalties?` | `vector` | Shows penalty clauses with page refs |
+| `What are the late payment penalties?` | `vector` | Penalty clauses with page refs |
+
+---
+
+## ⚠️ Deployment Note
+
+**A live hosted URL is not available for this demo.**
+
+The embedding model (`BAAI/bge-small-en-v1.5`) requires ~450 MB of RAM at load time. Render's free tier is capped at 512 MB, which is insufficient once the model, FAISS index, and FastAPI process are all running together — the service crashes with an out-of-memory error before it can accept requests.
+
+This is a hosting constraint, not a code issue. The app runs correctly on any machine with 1 GB+ of available RAM. A paid Render instance ($7/mo Starter) would resolve this.
 
 ---
 
@@ -158,9 +130,7 @@ Use these four queries to demonstrate all routing paths:
 
 ```json
 // Request
-{
-  "question": "Which customers have overdue payments?"
-}
+{ "question": "Which customers have overdue payments?" }
 
 // Response
 {
@@ -174,7 +144,7 @@ Use these four queries to demonstrate all routing paths:
 
 ### `GET /health`
 
-Returns `{"status": "ok"}` — used by the UI header health indicator.
+Returns `{"status": "ok"}`.
 
 ### `GET /docs`
 
@@ -198,41 +168,17 @@ jenny_demo_v2/
 ├── ingestion/
 │   └── ingest.py             # PDF → embeddings → FAISS index
 ├── prompts/
-│   └── system_prompt.txt     # LLM instructions (grounding + citation rules)
+│   └── system_prompt.txt     # LLM instructions
 ├── tools/
-│   ├── __init__.py
-│   ├── vector_tool.py        # FAISS search (loaded once at startup)
+│   ├── vector_tool.py        # FAISS search (lazy-loaded)
 │   └── sql_tool.py           # Text-to-SQL generation + execution
 ├── ui/
 │   └── index.html            # Chat UI — open directly, no build needed
 ├── .env.example              # Copy to .env and add GROQ_API_KEY
-├── .gitignore
-├── Procfile                  # Railway: bash start.sh
-├── railway.toml              # Railway config
+├── requirements.txt
 ├── runtime.txt               # Python 3.11
-├── requirements.txt          # Pinned dependencies
-├── start.sh                  # Auto-ingest + server startup script
 └── README.md
 ```
-
----
-
-## Replacing Mock Data with Real Data
-
-1. **Contracts:** Replace `data/contracts.pdf` with your real contract PDF.
-   Re-run: `python3 ingestion/ingest.py`
-
-2. **Payments:** Replace `data/payments.db` with your database, or edit
-   `data/create_mock_data.py` to match your schema and run it.
-   Update `tools/sql_tool.py` if column names differ.
-
----
-
-## Performance Notes
-
-- **Startup:** ~3–5 seconds — HuggingFace model loads once into memory.
-- **Per query:** ~1–2 seconds — Groq inference is fast; FAISS search is sub-100ms.
-- **Scaling:** For production, swap FAISS for Pinecone/Weaviate and SQLite for Postgres.
 
 ---
 
@@ -242,9 +188,8 @@ jenny_demo_v2/
 |---|---|
 | LLM | Groq `llama-3.3-70b-versatile` (free tier) |
 | Embeddings | HuggingFace `BAAI/bge-small-en-v1.5` (local, free) |
-| Vector store | FAISS (in-process, no server needed) |
+| Vector store | FAISS |
 | Database | SQLite |
 | Orchestration | LangGraph |
 | API | FastAPI |
 | UI | Vanilla HTML/CSS/JS (no build step) |
-| Deployment | Railway |
