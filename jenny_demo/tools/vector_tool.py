@@ -3,6 +3,8 @@ vector_tool.py — FAISS retrieval over contracts PDF.
 Loaded once at import time; reused across all queries.
 """
 import os
+os.environ["TRANSFORMERS_NO_TF"] = "1"
+
 from typing import List, Tuple
 
 from langchain_community.vectorstores import FAISS

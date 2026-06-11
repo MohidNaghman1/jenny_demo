@@ -30,9 +30,11 @@ load_dotenv()
 BASE        = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROMPT_PATH = os.path.join(BASE, "prompts", "system_prompt.txt")
 
-with open(PROMPT_PATH) as f:
-    SYSTEM_PROMPT = f.read()
+if not os.path.exists(PROMPT_PATH):
+    raise FileNotFoundError(f"Prompt file missing: {PROMPT_PATH}")
 
+with open(PROMPT_PATH, "r", encoding="utf-8") as f:
+    SYSTEM_PROMPT = f.read()
 # ── LLM singleton ─────────────────────────────────────────────────────────────
 
 llm = ChatGroq(
