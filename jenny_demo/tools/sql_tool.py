@@ -6,6 +6,8 @@ import os
 import re
 import sqlite3
 from typing import List, Tuple
+from langchain_core.messages import HumanMessage, SystemMessage
+
 
 BASE    = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE, "data", "payments.db")
@@ -52,7 +54,6 @@ def run(llm, question: str) -> Tuple[List[str], List[str]]:
         results — list of formatted context strings with source tags
         sources — list of source labels e.g. ["payments table"]
     """
-    from langchain_core.messages import HumanMessage, SystemMessage
 
     response  = llm.invoke([
         SystemMessage(content=SQL_SYSTEM_PROMPT),
