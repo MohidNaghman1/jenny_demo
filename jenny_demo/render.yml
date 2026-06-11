@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: jenny-demo
+    name: business-knowledge-assistant
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: bash start.sh
@@ -8,3 +8,7 @@ services:
       - key: PORT
         value: 8000
     autoDeploy: true
+    disk:
+      name: faiss-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
