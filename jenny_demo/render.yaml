@@ -12,4 +12,6 @@ services:
         sync: false
       - key: HF_TOKEN
         sync: false
+      - key: USE_HF_API
+        value: "true"
     plan: free

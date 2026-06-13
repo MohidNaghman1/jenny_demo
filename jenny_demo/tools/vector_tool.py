@@ -1,29 +1,36 @@
 """
 vector_tool.py — FAISS retrieval over contracts PDF.
-Lazy-loaded on first query to avoid startup crash.
+Local: uses local model (no internet needed)
+Render: uses HuggingFace Inference API (USE_HF_API=true)
 """
 import os
 from typing import List, Tuple
-from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 BASE       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_PATH = os.path.join(BASE, "data", "faiss_index")
 
-_embeddings = None
-_faiss_db   = None
+_faiss_db = None
 
 def _get_db():
-    global _embeddings, _faiss_db
+    global _faiss_db
     if _faiss_db is None:
-
-        _embeddings = HuggingFaceInferenceAPIEmbeddings(
-            api_key=os.getenv("HF_TOKEN", ""),
-            model_name="BAAI/bge-small-en-v1.5",
-        )
+        if os.getenv("USE_HF_API", "false").lower() == "true":
+            from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
+            embeddings = HuggingFaceInferenceAPIEmbeddings(
+                api_key=os.getenv("HF_TOKEN", ""),
+                model_name="BAAI/bge-small-en-v1.5",
+            )
+        else:
+            from langchain_huggingface import HuggingFaceEmbeddings
+            embeddings = HuggingFaceEmbeddings(
+                model_name="BAAI/bge-small-en-v1.5",
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            )
         _faiss_db = FAISS.load_local(
             INDEX_PATH,
-            _embeddings,
+            embeddings,
             allow_dangerous_deserialization=True,
         )
     return _faiss_db
