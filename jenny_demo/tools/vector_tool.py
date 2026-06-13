@@ -1,39 +1,36 @@
 """
 vector_tool.py — FAISS retrieval over contracts PDF.
-Loaded once at import time; reused across all queries.
+Lazy-loaded on first query to avoid startup crash.
 """
 import os
 from typing import List, Tuple
-
 from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 BASE       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_PATH = os.path.join(BASE, "data", "faiss_index")
 
-# Singleton — initialised once at module load
-embeddings = HuggingFaceInferenceAPIEmbeddings(
-    api_key=os.getenv("HF_TOKEN", ""),
-    model_name="BAAI/bge-small-en-v1.5",
-)
+_embeddings = None
+_faiss_db   = None
 
+def _get_db():
+    global _embeddings, _faiss_db
+    if _faiss_db is None:
 
-faiss_db = FAISS.load_local(
-    INDEX_PATH,
-    embeddings,
-    allow_dangerous_deserialization=True,
-)
+        _embeddings = HuggingFaceInferenceAPIEmbeddings(
+            api_key=os.getenv("HF_TOKEN", ""),
+            model_name="BAAI/bge-small-en-v1.5",
+        )
+        _faiss_db = FAISS.load_local(
+            INDEX_PATH,
+            _embeddings,
+            allow_dangerous_deserialization=True,
+        )
+    return _faiss_db
 
 
 def search(query: str, k: int = 4) -> Tuple[List[str], List[str]]:
-    """
-    Search the FAISS index.
-
-    Returns:
-        results — list of formatted context strings with source tags
-        sources — list of deduplicated source labels e.g. "contracts.pdf p.2"
-    """
-    hits    = faiss_db.similarity_search_with_relevance_scores(query, k=k)
+    hits    = _get_db().similarity_search_with_relevance_scores(query, k=k)
     results = []
     sources = []
 
