@@ -541,11 +541,15 @@ async function sendQuestion() {
   addSpinner();
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30 sec timeout
     const res = await fetch(`${API}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -587,6 +591,10 @@ async function sendQuestion() {
     dot.title = "API offline — start backend first";
   }
 })();
+// Ping backend every 10 minutes to prevent Render free tier sleep
+setInterval(() => fetch(`${API}/health`).catch(() => {}), 10 * 60 * 1000);
+// Also ping immediately on page load to wake it up
+fetch(`${API}/health`).catch(() => {});
 </script>
 </body>
 </html>
