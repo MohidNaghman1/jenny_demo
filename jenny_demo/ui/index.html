@@ -497,7 +497,7 @@ function addSpinner() {
   const el = document.createElement("div");
   el.className = "spinner-row";
   el.id = "spinner";
-  el.innerHTML = `<div class="spinner"></div><span class="spinner-text">Agent is reasoning…</span>`;
+  el.innerHTML = `<div class="spinner"></div><span class="spinner-text" id="spinner-msg">Agent is reasoning…</span>`;
   ca.appendChild(el);
   scrollBottom();
 }
@@ -540,36 +540,63 @@ async function sendQuestion() {
   addMessage("user", escHtml(question));
   addSpinner();
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000); // 60 sec timeout
-    const res = await fetch(`${API}/ask`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
+ // Retry logic — handles Render cold start (server still loading)
+  const MAX_RETRIES = 4;
+  const RETRY_DELAY = 6000;
+  let lastError = "";
+  let succeeded = false;
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || "Server error");
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 1) {
+        const spinnerEl = document.getElementById("spinner-msg");
+        if (spinnerEl) spinnerEl.textContent = `Server waking up... retrying (${attempt}/${MAX_RETRIES})`;
+      }
+
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 90000);
+
+      const res = await fetch(`${API}/ask`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ question }),
+        signal:  controller.signal,
+      });
+      clearTimeout(tid);
+
+      if (res.status === 503) {
+        lastError = "Agent is still loading";
+        await new Promise(r => setTimeout(r, RETRY_DELAY));
+        continue;
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || `Server error (${res.status})`);
+      }
+
+      const data = await res.json();
+      removeSpinner();
+
+      const answerHtml =
+        escHtml(data.answer).replace(/\n/g, "<br>") +
+        buildCitationTags(data.answer) +
+        buildSourcesPanel(data.sources);
+
+      addMessage("bot", answerHtml);
+      addSidebarEntry(question, data.route, data.reasoning);
+      succeeded = true;
+      break;
+
+    } catch (err) {
+      lastError = err.name === "AbortError" ? "Request timed out" : err.message;
+      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, RETRY_DELAY));
     }
+  }
 
-    const data = await res.json();
+  if (!succeeded) {
     removeSpinner();
-
-    const answerHtml =
-      escHtml(data.answer).replace(/\n/g, "<br>") +
-      buildCitationTags(data.answer) +
-      buildSourcesPanel(data.sources);
-
-    addMessage("bot", answerHtml);
-    addSidebarEntry(question, data.route, data.reasoning);
-
-  } catch (err) {
-    removeSpinner();
-    addMessage("bot", `<span style="color:#f87171">⚠ ${escHtml(err.message)}</span><br><span style="color:var(--text-muted);font-size:12px">Make sure the backend is running: <code>Backend Issue</code></span>`);
+    addMessage("bot", `<span style="color:#f87171">⚠ ${escHtml(lastError)}</span><br><span style="color:var(--text-muted);font-size:12px">The server may still be waking up. Wait 15 seconds and try again.</span>`);
   }
 
   busy = false;
