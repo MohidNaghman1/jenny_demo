@@ -3,21 +3,20 @@ vector_tool.py — FAISS retrieval over contracts PDF.
 Loaded once at import time; reused across all queries.
 """
 import os
-os.environ["TRANSFORMERS_NO_TF"] = "1"
-
 from typing import List, Tuple
 
+from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
 
 BASE       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_PATH = os.path.join(BASE, "data", "faiss_index")
 
-embeddings = HuggingFaceEmbeddings(
+# Singleton — initialised once at module load
+embeddings = HuggingFaceInferenceAPIEmbeddings(
+    api_key=os.getenv("HF_TOKEN", ""),
     model_name="BAAI/bge-small-en-v1.5",
-    model_kwargs={"device": "cpu"},
-    encode_kwargs={"normalize_embeddings": True},
 )
+
 
 faiss_db = FAISS.load_local(
     INDEX_PATH,

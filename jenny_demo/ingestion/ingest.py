@@ -8,14 +8,12 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceInferenceAPIEmbeddings
 from langchain_community.vectorstores import FAISS
 
 BASE       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PDF_PATH   = os.path.join(BASE, "data", "contracts.pdf")
 INDEX_PATH = os.path.join(BASE, "data", "faiss_index")
-
-EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 
 def ingest():
     print("📄 Loading PDF...")
@@ -36,11 +34,10 @@ def ingest():
 
     print(f"   Split into {len(chunks)} chunks")
 
-    print(f"🔢 Embedding with HuggingFace {EMBED_MODEL} (local, no API key)...")
-    embeddings = HuggingFaceEmbeddings(
-        model_name=EMBED_MODEL,
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True}
+    print("🔢 Embedding via HuggingFace Inference API (BAAI/bge-small-en-v1.5)...")
+    embeddings = HuggingFaceInferenceAPIEmbeddings(
+        api_key=os.getenv("HF_TOKEN", ""),
+        model_name="BAAI/bge-small-en-v1.5",
     )
 
     db = FAISS.from_documents(chunks, embeddings)
