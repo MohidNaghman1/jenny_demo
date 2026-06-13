@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: business-knowledge-assistant
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false          # set manually in Render dashboard
+      - key: HF_TOKEN
+        sync: false          # set manually in Render dashboard
+    plan: free
