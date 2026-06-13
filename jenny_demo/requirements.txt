@@ -13,5 +13,5 @@ pypdf==5.1.0
 python-dotenv==1.0.1
 pydantic==2.10.3
 httpx==0.27.2
-
+reportlab
 huggingface-hub==0.24.6
