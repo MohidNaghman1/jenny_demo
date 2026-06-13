@@ -1,8 +1,8 @@
 # Business Knowledge Assistant — Hybrid RAG Demo
 
-A LangGraph agent that answers natural-language business questions by routing across a **PDF contracts store** and a **SQLite payments database**, then synthesising grounded answers with inline source citations.
-
-Built with Groq (free tier) + HuggingFace local embeddings — **zero API cost beyond Groq**.
+A production-structured LangGraph agent that answers business questions by
+routing across a PDF contracts store and a SQLite payments database,
+then synthesises grounded answers with source citations.
 
 ---
 
@@ -12,115 +12,203 @@ Built with Groq (free tier) + HuggingFace local embeddings — **zero API cost b
 User Question
       │
       ▼
-┌──────────────────┐
-│  Query Rewriter  │  LLM rewrites to keyword-rich search form
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│     Router       │  LLM decides: vector / sql / hybrid
-└────────┬─────────┘
-         │
-   ┌─────┴──────────────────────┐
-   │             │              │
-   ▼             ▼              ▼
-vector_node   sql_node    vector → sql
-(FAISS/HF)  (LLM→SQLite)   (hybrid)
-   │             │              │
-   └─────────────┴──────────────┘
-                 │
-                 ▼
-        ┌─────────────────┐
-        │   Synthesizer   │  Grounded answer + citations
-        └────────┬────────┘
-                 │
-     answer + route + reasoning + sources
+┌─────────────────────┐
+│   Query Rewriter    │  Rewrites to keyword-rich search query
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│       Router        │  Classifies: vector / sql / hybrid
+└──────────┬──────────┘
+           │
+     ┌─────┴──────────────────┐
+     ▼                        ▼                      ▼
+vector_node              sql_node            vector → sql
+FAISS semantic      LLM-generated SQL         (hybrid)
+search over PDF     over payments.db
+     │                        │                      │
+     └────────────────────────┴──────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────────┐
+                    │    Synthesizer      │  Cited, grounded answer
+                    └─────────────────────┘
 ```
 
-**Data sources:**
-- `data/contracts.pdf` — service agreements with clauses, penalties, suspension terms
-- `data/payments.db` — SQLite table with customer names, amounts, due dates, status
+**Stack**
+
+| Component     | Technology                                        |
+|---------------|---------------------------------------------------|
+| LLM           | Groq `llama-3.3-70b-versatile`                    |
+| Embeddings    | HuggingFace Inference API `BAAI/bge-small-en-v1.5`|
+| Vector store  | FAISS                                             |
+| Orchestration | LangGraph                                         |
+| API           | FastAPI                                           |
+| Frontend      | Vanilla HTML/CSS/JS (no build step)               |
+| Deployment    | Render (free tier)                                |
 
 ---
 
-## Quickstart (Local)
+## Project Structure
 
-### 1. Get a free Groq API key
-
-1. Visit [console.groq.com](https://console.groq.com)
-2. Sign up → **API Keys** → **Create API Key**
-3. Copy the key (starts with `gsk_...`)
-
-### 2. Clone and configure
-
-```bash
-git clone <your-repo-url>
-cd jenny_demo_v2
-
-cp .env.example .env
-# Open .env and paste your key:
-# GROQ_API_KEY=gsk_...
+```
+├── agent/
+│   └── router.py            # LangGraph graph — pure orchestration
+├── api/
+│   └── main.py              # FastAPI endpoints
+├── data/
+│   ├── contracts.pdf        # Source PDF document
+│   ├── payments.db          # SQLite payments database
+│   ├── faiss_index/         # Pre-built FAISS index (commit this)
+│   └── create_mock_data.py
+├── ingestion/
+│   └── ingest.py            # PDF → chunks → HF API embeddings → FAISS
+├── prompts/
+│   └── system_prompt.txt    # LLM system prompt
+├── tools/
+│   ├── __init__.py
+│   ├── vector_tool.py       # FAISS search (singleton)
+│   └── sql_tool.py          # Schema cache + text-to-SQL
+├── ui/
+│   └── index.html           # Chat UI — open directly in browser
+├── .env.example
+├── .gitignore
+├── render.yaml              # Render deployment config
+├── requirements.txt
+└── runtime.txt
 ```
 
-### 3. Install dependencies
+---
+
+## Local Setup
+
+### 1 — Get API keys (both free)
+
+**Groq API key**
+1. Sign up at [console.groq.com](https://console.groq.com)
+2. Navigate to **API Keys** → **Create API Key**
+3. Copy the key (starts with `gsk_`)
+
+**HuggingFace token**
+1. Sign up at [huggingface.co](https://huggingface.co)
+2. Go to **Settings** → **Access Tokens** → **New Token**
+3. Select **Read** role, copy the token (starts with `hf_`)
+
+### 2 — Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+```
+GROQ_API_KEY=gsk_your_key_here
+HF_TOKEN=hf_your_token_here
+```
+
+### 3 — Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-> **Note:** HuggingFace embeddings (`BAAI/bge-small-en-v1.5`) download ~40 MB on first use. No API key needed — runs locally on CPU.
-
-### 4. Build the FAISS index
+### 4 — Build the FAISS index
 
 ```bash
 python3 ingestion/ingest.py
 ```
 
-This reads `data/contracts.pdf`, chunks it, embeds it, and saves the FAISS vector index to `data/faiss_index/`. **Re-run this any time you change the PDF.**
+Output:
+```
+📄 Loading PDF...
+   Loaded 2 pages
+   Split into 18 chunks
+🔢 Embedding via HuggingFace Inference API (BAAI/bge-small-en-v1.5)...
+✅ FAISS index saved to data/faiss_index
+   Total vectors: 18
+```
 
-### 5. Start the API
+> ⚠️ Commit `data/faiss_index/` to your repo before deploying.
+> Render does not run ingestion — it uses the pre-built index from the repo.
+
+### 5 — Start the API
 
 ```bash
 uvicorn api.main:app --reload --port 8000
 ```
 
-API docs available at: http://localhost:8000/docs
+- API: `http://localhost:8000`
+- Swagger docs: `http://localhost:8000/docs`
 
-### 6. Open the UI
-
-No build step — open directly in any browser:
+### 6 — Open the UI
 
 ```bash
 open ui/index.html       # macOS
 xdg-open ui/index.html   # Linux
-# Windows: double-click ui/index.html in Explorer
 ```
 
-The UI calls `http://localhost:8000` by default.
+No npm, no build tools. The UI calls `http://localhost:8000/ask`.
 
 ---
 
-## Demo Queries
+## Deploying to Render (Free Tier)
 
-Use these to test all routing paths:
+Render free tier is sufficient for a demo — no credit card required.
 
-| Query | Route | What it shows |
-|---|---|---|
-| `Which customers have overdue payments?` | `sql` | SQL-only: names, amounts, due dates |
-| `What does the contract say about service suspension?` | `vector` | PDF-only: clause extraction with page citations |
-| `Which customers have overdue payments and what does their contract say about suspension?` | `hybrid` | **Hybrid** — single answer combining both sources |
-| `What is the refund policy?` | `vector` | Policy lookup from PDF |
-| `What are the late payment penalties?` | `vector` | Penalty clauses with page refs |
+### Step 1 — Build FAISS index locally and commit it
 
----
+```bash
+python3 ingestion/ingest.py
+git add data/faiss_index/
+git commit -m "Add pre-built FAISS index"
+git push
+```
 
-## ⚠️ Deployment Note
+### Step 2 — Push to GitHub
 
-**A live hosted URL is not available for this demo.**
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+git remote add origin https://github.com/YOUR_USERNAME/jenny-rag-demo.git
+git push -u origin main
+```
 
-The embedding model (`BAAI/bge-small-en-v1.5`) requires ~450 MB of RAM at load time. Render's free tier is capped at 512 MB, which is insufficient once the model, FAISS index, and FastAPI process are all running together — the service crashes with an out-of-memory error before it can accept requests.
+### Step 3 — Deploy on Render
 
-This is a hosting constraint, not a code issue. The app runs correctly on any machine with 1 GB+ of available RAM. A paid Render instance ($7/mo Starter) would resolve this.
+1. Go to [render.com](https://render.com) → **New** → **Web Service**
+2. Connect your GitHub repo
+3. Render detects `render.yaml` automatically
+4. Go to **Environment** and add:
+   ```
+   GROQ_API_KEY = gsk_your_key_here
+   HF_TOKEN     = hf_your_token_here
+   ```
+5. Click **Deploy** — build takes ~2 minutes
+
+Your API will be live at `https://your-app.onrender.com`
+
+### Step 4 — Update the UI with your live URL
+
+Edit one line in `ui/index.html`:
+
+```javascript
+// Change this:
+const API = "http://localhost:8000";
+
+// To your Render URL:
+const API = "https://your-app.onrender.com";
+```
+
+### Step 5 — Host the UI on GitHub Pages
+
+1. Push the updated `ui/index.html`
+2. Go to repo **Settings** → **Pages**
+3. Source: **main branch** → **/ui** folder
+4. UI live at: `https://YOUR_USERNAME.github.io/jenny-rag-demo`
+
+> ⚠️ Render free tier spins down after 15 minutes of inactivity.
+> First request after idle takes ~30 seconds to wake up. This is normal for a demo.
 
 ---
 
@@ -130,66 +218,57 @@ This is a hosting constraint, not a code issue. The app runs correctly on any ma
 
 ```json
 // Request
-{ "question": "Which customers have overdue payments?" }
+{
+  "question": "Which customers have overdue payments and what does their contract say about suspension?"
+}
 
 // Response
 {
-  "question":  "Which customers have overdue payments?",
-  "answer":    "Acme Corp has an overdue payment of $5,000 due 2024-10-01 [Source: payments table]...",
-  "route":     "sql",
-  "reasoning": "The question asks about payment status which is stored in the database.",
-  "sources":   ["payments table"]
+  "question":  "Which customers have overdue payments...",
+  "answer":    "Acme Corp has two overdue payments totalling $10,000 [Source: payments table]. Their contract specifies suspension after 60 days of non-payment with a $200 reinstatement fee [Source: contracts.pdf, Page 1].",
+  "route":     "hybrid",
+  "reasoning": "The question requires payment data from the database and suspension terms from the contracts.",
+  "sources":   ["payments table", "contracts.pdf p.1"]
 }
 ```
 
 ### `GET /health`
 
-Returns `{"status": "ok"}`.
-
-### `GET /docs`
-
-Interactive Swagger UI for manual testing.
-
----
-
-## Project Structure
-
-```
-jenny_demo_v2/
-├── agent/
-│   └── router.py             # LangGraph graph + all nodes
-├── api/
-│   └── main.py               # FastAPI app with CORS
-├── data/
-│   ├── contracts.pdf         # Source contracts document
-│   ├── payments.db           # SQLite payments database
-│   ├── create_mock_data.py   # Script to regenerate mock data
-│   └── faiss_index/          # Generated by ingest.py — do not commit
-├── ingestion/
-│   └── ingest.py             # PDF → embeddings → FAISS index
-├── prompts/
-│   └── system_prompt.txt     # LLM instructions
-├── tools/
-│   ├── vector_tool.py        # FAISS search (lazy-loaded)
-│   └── sql_tool.py           # Text-to-SQL generation + execution
-├── ui/
-│   └── index.html            # Chat UI — open directly, no build needed
-├── .env.example              # Copy to .env and add GROQ_API_KEY
-├── requirements.txt
-├── runtime.txt               # Python 3.11
-└── README.md
+```json
+{ "status": "ok" }
 ```
 
 ---
 
-## Tech Stack
+## Demo Queries
 
-| Component | Technology |
-|---|---|
-| LLM | Groq `llama-3.3-70b-versatile` (free tier) |
-| Embeddings | HuggingFace `BAAI/bge-small-en-v1.5` (local, free) |
-| Vector store | FAISS |
-| Database | SQLite |
-| Orchestration | LangGraph |
-| API | FastAPI |
-| UI | Vanilla HTML/CSS/JS (no build step) |
+| Query | Route | Tests |
+|---|---|---|
+| Which customers have overdue payments? | `sql` | SQL-only, amounts + dates |
+| What does the contract say about service suspension? | `vector` | PDF-only, clause extraction |
+| Which customers have overdue payments and what does their contract say about suspension? | `hybrid` | Cross-source synthesis |
+| What is the refund policy? | `vector` | PDF-only, policy lookup |
+| What is the weather today? | `vector` | Missing-info behaviour |
+
+---
+
+## Key Design Decisions
+
+**HuggingFace Inference API for embeddings** — Eliminates the 40MB local model
+download. Embeddings are generated via API call, keeping Render's free tier
+memory usage well within limits.
+
+**Pre-built FAISS index committed to repo** — Render's free tier has no
+persistent disk. The index is built locally and committed so it's available
+at runtime without any build-time ingestion step.
+
+**Singletons at module load** — Embeddings client, FAISS index, DB schema,
+and system prompt are all initialised once. Zero cold-start cost per query.
+
+**Tools as separate modules** — `tools/vector_tool.py` and `tools/sql_tool.py`
+own their data access logic. `router.py` is pure orchestration. Each tool
+is independently testable and swappable.
+
+**Query rewriting before routing** — Raw user question is rewritten into a
+keyword-rich search query before hitting FAISS. Improves retrieval quality
+significantly for conversational or vague phrasings.
