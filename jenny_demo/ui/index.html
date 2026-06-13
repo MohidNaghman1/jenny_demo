@@ -413,7 +413,7 @@
 <script>
 // API URL: set window.API_BASE before this script to override (e.g. Railway URL)
 // Or update this line directly when deploying.
-const API = window.API_BASE || "http://localhost:8000";
+const API = window.API_BASE || "https://jenny-demo.onrender.com";
 let busy = false;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -569,7 +569,7 @@ async function sendQuestion() {
 
   } catch (err) {
     removeSpinner();
-    addMessage("bot", `<span style="color:#f87171">⚠ ${escHtml(err.message)}</span><br><span style="color:var(--text-muted);font-size:12px">Make sure the backend is running: <code>uvicorn api.main:app --reload --port 8000</code></span>`);
+    addMessage("bot", `<span style="color:#f87171">⚠ ${escHtml(err.message)}</span><br><span style="color:var(--text-muted);font-size:12px">Make sure the backend is running: <code>Backend Issue</code></span>`);
   }
 
   busy = false;
